@@ -6,6 +6,8 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 cargo build --release --locked -p codenotch-hook --target-dir target/hook
+# An older version's bundles would match the globs below as well
+rm -rf target/release/bundle
 (cd codenotch && npx --yes @tauri-apps/cli@2.11.4 build)
 rm -rf dist && mkdir dist
 cp target/release/bundle/deb/Codenotch_*_amd64.deb dist/Codenotch_amd64.deb
