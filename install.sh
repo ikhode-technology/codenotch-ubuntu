@@ -29,7 +29,9 @@ chmod 644 "$tmp/codenotch.deb"
 
 say "Installing (sudo will ask for your password)…"
 if [ "$(id -u)" -eq 0 ]; then SUDO=; else SUDO=sudo; fi
-$SUDO apt-get install -y "$tmp/codenotch.deb"
+# Piped from curl, this script holds the terminal's input, so needrestart's "Which services should
+# be restarted?" dialog could not be answered and hung the install: list them instead of asking
+$SUDO env NEEDRESTART_MODE=l DEBIAN_FRONTEND=noninteractive apt-get install -y "$tmp/codenotch.deb"
 
 # Restart it when a desktop session is there to show it in
 if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && [ "$(id -u)" -ne 0 ]; then
