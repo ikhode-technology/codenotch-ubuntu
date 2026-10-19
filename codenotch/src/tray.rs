@@ -4,6 +4,12 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 
+/// The name the tray shows: the Ubuntu build carries its own.
+#[cfg(windows)]
+macro_rules! brand { () => { "Codenotch" }; }
+#[cfg(not(windows))]
+macro_rules! brand { () => { "codenotch-ubuntu" }; }
+
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
     let mut builder = TrayIconBuilder::with_id("main");
@@ -13,7 +19,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         builder = builder.icon(icon);
     }
     builder
-        .tooltip(concat!("Codenotch v", env!("CARGO_PKG_VERSION")))
+        .tooltip(concat!(brand!(), " v", env!("CARGO_PKG_VERSION")))
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, ev| handle(app, ev.id().as_ref()))
@@ -110,9 +116,9 @@ fn tooltip(app: &AppHandle) -> String {
         parts.push(format!("{} {value}", crate::provider_label(id)));
     }
     if parts.is_empty() {
-        concat!("Codenotch v", env!("CARGO_PKG_VERSION")).to_string()
+        concat!(brand!(), " v", env!("CARGO_PKG_VERSION")).to_string()
     } else {
-        format!("Codenotch — {}", parts.join(" · "))
+        format!(concat!(brand!(), " — {}"), parts.join(" · "))
     }
 }
 

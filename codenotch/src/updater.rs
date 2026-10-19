@@ -1,4 +1,4 @@
-//! Check published Windows releases, then use a signed Tauri update when one exists.
+//! Check this build's published releases (Windows or Ubuntu), then use a signed Tauri update when one exists.
 //! Until signing is configured, Settings links to the official installer instead.
 
 use semver::Version;
@@ -12,11 +12,15 @@ use tauri_plugin_updater::UpdaterExt;
 const REPO: &str = "vinzdg/codenotch";
 #[cfg(windows)]
 const INSTALLER_NAME: &str = "Codenotch-Setup.exe";
+#[cfg(windows)]
+const AGENT: &str = "Codenotch-Windows";
 // The Linux build is released from its own repository, as a package rather than an installer
 #[cfg(not(windows))]
 const REPO: &str = "MyKhode/codenotch-ubuntu";
 #[cfg(not(windows))]
 const INSTALLER_NAME: &str = "Codenotch_amd64.deb";
+#[cfg(not(windows))]
+const AGENT: &str = "codenotch-ubuntu";
 const UNSET_PUBKEY: &str = "REPLACE_WITH_TAURI_PUBLIC_KEY";
 const CHECK_ERROR: &str = "Could not check for updates";
 const INSTALL_ERROR: &str = "Could not install the update";
@@ -98,7 +102,7 @@ fn latest_windows_release(current: &Version) -> Result<Option<Version>, String> 
     let body = agent
         .get(&format!("https://api.github.com/repos/{REPO}/releases/latest"))
         .set("Accept", "application/vnd.github+json")
-        .set("User-Agent", "Codenotch-Windows")
+        .set("User-Agent", AGENT)
         .call()
         .map_err(|e| e.to_string())?
         .into_string()
@@ -174,7 +178,7 @@ pub fn check_for_update(app: AppHandle) {
                 );
             }
             Ok(None) => {
-                crate::applog("updater: this is the newest Windows release");
+                crate::applog("updater: this is the newest release");
                 set(
                     &app,
                     UpdateState {

@@ -1,6 +1,8 @@
 <div align="center">
 
-# Codenotch for Ubuntu
+![codenotch-ubuntu](docs/banner.jpg)
+
+# codenotch-ubuntu
 
 ![Platform](https://img.shields.io/badge/platform-Ubuntu%2022.04%2B-E95420?logo=ubuntu&logoColor=white)
 ![Rust](https://img.shields.io/badge/rust-Tauri%202-orange)
@@ -10,12 +12,9 @@
 assistant's usage limit you have burned — and whether Claude is still working, done, or waiting
 on you.**
 
-![Codenotch on Ubuntu: the notch with Claude's hover card](docs/screenshot.png)
+Provided by **Meatika Dev Team**
 
 </div>
-
-The Linux build of [Codenotch](https://github.com/vinzdg/codenotch) — same design, same providers,
-same interactions as the macOS original. Hover a ring for its limit windows and when they reset.
 
 ## Quick install
 
@@ -44,6 +43,22 @@ Not on Ubuntu or Debian? The release also has `Codenotch_amd64.AppImage`:
 
 Works on Ubuntu 22.04 and newer (and other Debian-based distributions), on x86-64.
 
+## How to use it
+
+1. **Start it** — the installer starts it for you. Later, open **Codenotch** from the app menu or
+   run `codenotch` in a terminal. Turn on *Settings → Open Codenotch at login* to have it always there.
+2. **Sign in to your tools as usual** — there is nothing to connect. Each assistant that is installed
+   and signed in gets a ring by itself (for ChatGPT Plus/Pro: `codex login`, *Sign in with ChatGPT*).
+3. **Hover** a ring to see its card: every limit window, how much is used and when it resets.
+4. **Click** a ring to refresh it. **Right-click** for *Refresh now*, the provider's usage page and *Quit*.
+5. **Drag** the six dots beside the settings button (or hold <kbd>Alt</kbd> on the notch) to move it
+   along any edge of any screen.
+6. **Settings** (the gear below the rings, or the tray icon): which rings to show, size, edge,
+   *Show on hover*, theme, language, start at login, *Check for updates*, and **Install hooks** for
+   live Claude session status. Clicking a finished Claude session jumps back to its terminal window.
+
+![The notch with Claude's hover card](docs/screenshot.png)
+
 ## What it shows
 
 Each assistant that is installed and signed in on your machine gets a ring. Codenotch borrows the
@@ -62,16 +77,7 @@ sign-in that tool already has — there is nothing to log into here, and it neve
 
 Tools that are not installed simply do not get a ring.
 
-## Using it
-
-- **Hover** a ring to see its card: every limit window, how much is used and when it resets.
-- **Click** a ring to refresh it. **Right-click** for *Refresh now*, the provider's usage page and *Quit*.
-- **Drag** the six dots beside the settings button (or hold <kbd>Alt</kbd> on the notch) to move it
-  along any edge of any screen.
-- **Settings** (the gear below the rings, or the tray icon): which rings to show, size, edge,
-  *Show on hover*, theme, language, start at login, and **Install hooks** for live Claude session
-  status.
-- Clicking a finished Claude session jumps back to its terminal window.
+## Files and diagnostics
 
 Settings, logs and saved readings live in `~/.config/codenotch`. Run `codenotch doctor` in a terminal
 to see what it found: credentials, CLIs, sessions.
@@ -86,7 +92,7 @@ curl -fsSL https://raw.githubusercontent.com/MyKhode/codenotch-ubuntu/main/insta
 sudo apt remove codenotch
 ```
 
-Settings → General → *Check for updates* also tells you when a new release is out.
+Settings → General → *Check for updates* asks this repository's releases whether a newer version is out.
 
 ## Build from source
 
@@ -119,7 +125,7 @@ WebKitGTK's zoom, smooth card animation, a `.deb`/AppImage, and updates from thi
 
 ## Credits and license
 
-Codenotch is designed by [Vinz](https://github.com/vinzdg/codenotch); the Windows port this builds on is
+codenotch-ubuntu is provided by **Meatika Dev Team**. Codenotch is designed by [Vinz](https://github.com/vinzdg/codenotch); the Windows port this builds on is
 by [Im-Midi](https://github.com/Im-Midi/codenotch-windows). Provider marks are from
 [`@lobehub/icons`](https://github.com/lobehub/lobe-icons) (MIT) and remain their owners' trademarks.
 

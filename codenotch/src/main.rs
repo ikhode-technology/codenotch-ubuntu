@@ -354,6 +354,26 @@ pub fn place_notch(app: &AppHandle) {
             let (x, y) = edge_origin(&mon, &edge, target.width as i32, target.height as i32, ratio);
             let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
             placed = (x, y, target.width as i32, target.height as i32);
+            // X11: the move reaches the window manager before the resize, and it keeps a window on
+            // screen at its old size — shrinking from Large, the notch stopped short of the edge
+            // until it was dragged. Moved again once the new size has landed.
+            #[cfg(not(windows))]
+            {
+                let (app, glide) = (app.clone(), *GLIDE.lock().unwrap());
+                std::thread::spawn(move || {
+                    for _ in 0..40 {
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                        let Some(w) = app.get_webview_window("notch") else { return };
+                        if *GLIDE.lock().unwrap() != glide {
+                            return;
+                        }
+                        if w.outer_size().map(|s| s == target).unwrap_or(false) {
+                            let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+                            return;
+                        }
+                    }
+                });
+            }
         }
         // The page mirrors itself for the edge it is on; it cannot know that on its own.
         let _ = w.emit("notch_edge", &edge);

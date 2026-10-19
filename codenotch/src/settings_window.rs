@@ -31,7 +31,7 @@ fn open_now(app: &AppHandle) {
     // The Mac's window: 680 × 520, centred, not resizable. `shadow` on an undecorated window is what
     // gives it Windows 11's rounded corners.
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
-        .title("Codenotch Settings")
+        .title(if cfg!(windows) { "Codenotch Settings" } else { "codenotch-ubuntu Settings" })
         .inner_size(680.0, 520.0)
         .resizable(false)
         .maximizable(false)
@@ -103,14 +103,16 @@ pub fn quit_app(app: AppHandle) {
 /// The credit line's link, as on the Mac.
 #[tauri::command]
 pub fn open_author_page() {
-    let mut cmd = std::process::Command::new("cmd");
-    cmd.args(["/C", "start", "", "https://x.com/hivinz_"]);
+    #[cfg(not(windows))]
+    let _ = std::process::Command::new("xdg-open").arg("https://x.com/hivinz_").spawn();
     #[cfg(windows)]
     {
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/C", "start", "", "https://x.com/hivinz_"]);
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
+        let _ = cmd.spawn();
     }
-    let _ = cmd.spawn();
 }
 
 /// Keeps Mica on the same side as the page above it.
