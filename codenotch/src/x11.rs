@@ -73,6 +73,17 @@ pub fn left_button_down() -> bool {
     .unwrap_or(false)
 }
 
+/// The pointer on the root window, in physical pixels: what `cursor_position` gives, without a
+/// round trip through the main thread
+pub fn pointer() -> Option<tauri::PhysicalPosition<f64>> {
+    with(|x, d| unsafe {
+        let root = (x.XDefaultRootWindow)(d);
+        let (mut r, mut c, mut rx, mut ry, mut wx, mut wy, mut mask) = (0, 0, 0, 0, 0, 0, 0 as c_uint);
+        ((x.XQueryPointer)(d, root, &mut r, &mut c, &mut rx, &mut ry, &mut wx, &mut wy, &mut mask) != 0)
+            .then(|| tauri::PhysicalPosition::new(rx as f64, ry as f64))
+    })
+}
+
 /// The process owning the window the window manager calls active; 0 when unknown
 pub fn active_pid() -> u32 {
     with(|x, d| {

@@ -116,6 +116,7 @@ pub struct Screen {
 }
 
 impl Screen {
+    #[cfg(windows)]
     fn of(m: &tauri::window::Monitor) -> Self {
         let wa = m.work_area();
         Self {
@@ -140,25 +141,102 @@ impl Screen {
     }
 }
 
+/// Every monitor GDK knows, primary first, in physical pixels as tauri reports them. Main thread only.
+#[cfg(not(windows))]
+fn gdk_screens() -> Vec<Screen> {
+    use std::ffi::{c_char, c_void, CStr};
+    #[repr(C)]
+    struct Rect {
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+    }
+    extern "C" {
+        fn gdk_display_get_default() -> *mut c_void;
+        fn gdk_display_get_n_monitors(d: *mut c_void) -> i32;
+        fn gdk_display_get_monitor(d: *mut c_void, n: i32) -> *mut c_void;
+        fn gdk_display_get_primary_monitor(d: *mut c_void) -> *mut c_void;
+        fn gdk_monitor_get_geometry(m: *mut c_void, r: *mut Rect);
+        fn gdk_monitor_get_workarea(m: *mut c_void, r: *mut Rect);
+        fn gdk_monitor_get_scale_factor(m: *mut c_void) -> i32;
+        fn gdk_monitor_get_model(m: *mut c_void) -> *const c_char;
+    }
+    unsafe {
+        let d = gdk_display_get_default();
+        if d.is_null() {
+            return Vec::new();
+        }
+        let primary = gdk_display_get_primary_monitor(d);
+        let mut mons: Vec<*mut c_void> =
+            (0..gdk_display_get_n_monitors(d)).map(|i| gdk_display_get_monitor(d, i)).filter(|m| !m.is_null()).collect();
+        if !primary.is_null() {
+            mons.retain(|m| *m != primary);
+            mons.insert(0, primary);
+        }
+        mons.into_iter()
+            .map(|m| {
+                let (mut g, mut wa) = (Rect { x: 0, y: 0, w: 0, h: 0 }, Rect { x: 0, y: 0, w: 0, h: 0 });
+                gdk_monitor_get_geometry(m, &mut g);
+                gdk_monitor_get_workarea(m, &mut wa);
+                let scale = gdk_monitor_get_scale_factor(m).max(1) as f64;
+                let px = |v: i32| (v as f64 * scale).round() as i32;
+                let model = gdk_monitor_get_model(m);
+                Screen {
+                    name: (!model.is_null()).then(|| CStr::from_ptr(model).to_string_lossy().into_owned()),
+                    x: px(g.x),
+                    y: px(g.y),
+                    w: px(g.w),
+                    h: px(g.h),
+                    scale,
+                    work: (px(wa.x), px(wa.y), px(wa.w), px(wa.h)),
+                }
+            })
+            .collect()
+    }
+}
+
+/// The thread GTK runs on, recorded first thing in `main`
+static MAIN_THREAD: std::sync::OnceLock<std::thread::ThreadId> = std::sync::OnceLock::new();
+
 /// Every attached monitor, primary first so a stale name always falls back to something sensible.
 pub fn screens(app: &AppHandle) -> Vec<Screen> {
-    let Some(w) = app.get_webview_window("notch") else {
-        return Vec::new();
-    };
-    let primary = w.primary_monitor().ok().flatten().map(|m| Screen::of(&m));
-    let mut out: Vec<Screen> = Vec::new();
-    if let Some(p) = primary.clone() {
-        out.push(p);
+    // Tauri reads a monitor's name, geometry and work area through GDK on the calling thread, and
+    // GDK is not thread-safe: polled from the work-area watcher, that segfaulted in GObject
+    // (g_type_check_instance_is_a) every few hours. Moving the call to the main thread was not
+    // enough either — tauri's getters run inline there corrupt the heap under load — so GDK is read
+    // directly, and always on the main thread.
+    #[cfg(not(windows))]
+    {
+        if MAIN_THREAD.get().map_or(true, |id| *id == std::thread::current().id()) {
+            return gdk_screens();
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        if app.run_on_main_thread(move || { let _ = tx.send(gdk_screens()); }).is_err() {
+            return Vec::new();
+        }
+        rx.recv().unwrap_or_default()
     }
-    if let Ok(all) = w.available_monitors() {
-        for m in all {
-            let s = Screen::of(&m);
-            if !out.iter().any(|o| o.name == s.name && o.x == s.x && o.y == s.y) {
-                out.push(s);
+    #[cfg(windows)]
+    {
+        let Some(w) = app.get_webview_window("notch") else {
+            return Vec::new();
+        };
+        let primary = w.primary_monitor().ok().flatten().map(|m| Screen::of(&m));
+        let mut out: Vec<Screen> = Vec::new();
+        if let Some(p) = primary.clone() {
+            out.push(p);
+        }
+        if let Ok(all) = w.available_monitors() {
+            for m in all {
+                let s = Screen::of(&m);
+                if !out.iter().any(|o| o.name == s.name && o.x == s.x && o.y == s.y) {
+                    out.push(s);
+                }
             }
         }
+        out
     }
-    out
 }
 
 /// The monitor the notch should sit on: the configured one while it is still attached, else primary.
@@ -936,15 +1014,33 @@ fn start_pointer_watchdog(app: AppHandle) {
         let mut miss = 0u8;
         // Last value pushed: this changes only when the cursor crosses an edge
         let mut click_through: Option<bool> = None;
+        // The window's rectangle, asked of the main thread only while the pointer is near it or
+        // once a second: three round trips there 20 times a second were most of the idle CPU.
+        let mut frame: Option<(tauri::PhysicalPosition<i32>, Option<(f64, f64)>)> = None;
+        let mut frame_age = 0u64;
         loop {
             std::thread::sleep(std::time::Duration::from_millis(WATCHDOG_MS));
             let Some(w) = app.get_webview_window("notch") else { continue };
-            let (Ok(pos), Ok(cur)) = (w.outer_position(), app.cursor_position()) else { continue };
+            #[cfg(not(windows))]
+            let Some(cur) = x11::pointer() else { continue };
+            #[cfg(windows)]
+            let Ok(cur) = app.cursor_position() else { continue };
+            let near = frame.as_ref().map_or(true, |(p, s)| {
+                let (fw, fh) = s.unwrap_or((0.0, 0.0));
+                let m = 2.0 * HOT_PAD + 64.0;
+                cur.x >= p.x as f64 - m && cur.y >= p.y as f64 - m && cur.x < p.x as f64 + fw + m && cur.y < p.y as f64 + fh + m
+            });
+            frame_age += WATCHDOG_MS;
+            if near || frame_age >= 1000 {
+                let Ok(pos) = w.outer_position() else { continue };
+                frame = Some((pos, w.outer_size().ok().map(|s| (s.width as f64, s.height as f64))));
+                frame_age = 0;
+            }
+            let Some((pos, size)) = frame else { continue };
             let rects = HOT.lock().unwrap().clone();
             // Cursor position relative to the window's top-left, in physical pixels; the hot rectangles are physical too, so no scale conversion
             let lx = cur.x - pos.x as f64;
             let ly = cur.y - pos.y as f64;
-            let size = w.outer_size().ok().map(|s| (s.width as f64, s.height as f64));
             let inside = cursor_in_hot(&rects, lx, ly, size);
 
             if click_through != Some(!inside) {
@@ -1924,6 +2020,7 @@ fn adopt_system_proxy() {
 fn main() {
     #[cfg(not(windows))]
     {
+        let _ = MAIN_THREAD.set(std::thread::current().id());
         // Wayland lets no client place its own window, and the notch must sit on an edge: run under
         // XWayland unless told otherwise (what scripts/run-linux.sh does for a terminal launch)
         if std::env::var_os("GDK_BACKEND").is_none() {
