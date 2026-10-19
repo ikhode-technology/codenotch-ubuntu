@@ -82,6 +82,7 @@
   .item.cap{min-height:0;padding:8px 12px;font-size:12px;color:var(--text2);display:block}
   .item .hint{font-size:12px;color:var(--text2)}
   .value{color:var(--text2)}
+  .snippet{flex:1;min-width:0;font:12px ui-monospace,"Ubuntu Mono",monospace;background:var(--btn);padding:6px 8px;border-radius:6px;white-space:nowrap;overflow-x:auto;user-select:all}
 
   /* ---- account rows ---- */
   .acct{padding:9px 12px}
@@ -230,6 +231,11 @@
         <div class="group">
           <div class="item"><span>Data folder</span><button class="btn" id="btn-data">Open folder</button></div>
           <div class="item cap">Everything Codenotch remembers lives in one folder: your settings, its log file, and the "glyphs" folder where you can drop your own icons. Opens in File Explorer.</div>
+        </div>
+        <div class="group" id="grp-uninstall" hidden>
+          <div class="item"><span>Uninstall</span></div>
+          <div class="item"><code class="snippet" id="uninstall-cmd">sudo apt remove codenotch &amp;&amp; pkill codenotch</code><button class="btn" id="btn-uninstall-copy">Copy</button></div>
+          <div class="item cap">Paste this into a terminal to remove codenotch-ubuntu and close the notch. Add <code>rm -rf ~/.config/codenotch</code> to delete its settings too.</div>
         </div>
         <div class="group">
           <div class="item cap"><span>codenotch-ubuntu, provided by Meatika Dev Team</span></div>
@@ -1705,6 +1711,22 @@ document.getElementById('btn-data').addEventListener('click', () => {
 });
 document.getElementById('author').addEventListener('click', () => {
   invoke('open_author_page').catch(e => strip('open_author_page failed: ' + errText(e)));
+});
+// Linux only: Windows removes the app from its own Apps settings
+if(!/Windows/.test(navigator.userAgent)) document.getElementById('grp-uninstall').hidden = false;
+document.getElementById('btn-uninstall-copy').addEventListener('click', () => {
+  const text = document.getElementById('uninstall-cmd').textContent;
+  const fallback = () => {
+    // The tauri:// page is not always a secure context, so the clipboard API can be missing
+    const sel = window.getSelection(), range = document.createRange();
+    range.selectNodeContents(document.getElementById('uninstall-cmd'));
+    sel.removeAllRanges(); sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    return ok;
+  };
+  Promise.resolve(navigator.clipboard ? navigator.clipboard.writeText(text).then(() => true, fallback) : fallback())
+    .then(ok => ok ? toast(ui('Copied', 'Copied')) : strip('Copy failed: select the command and copy it by hand'));
 });
 (function realVersion(){
   const api = window.__TAURI__ && window.__TAURI__.app;

@@ -57,7 +57,6 @@ Works on Ubuntu 22.04 and newer (and other Debian-based distributions), on x86-6
    *Show on hover*, theme, language, start at login, *Check for updates*, and **Install hooks** for
    live Claude session status. Clicking a finished Claude session jumps back to its terminal window.
 
-![The notch with Claude's hover card](docs/screenshot.png)
 
 ## What it shows
 
