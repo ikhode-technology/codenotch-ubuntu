@@ -1,13 +1,13 @@
 #!/bin/sh
 # Codenotch for Ubuntu — installs the latest release:
 #
-#   curl -fsSL https://raw.githubusercontent.com/MyKhode/codenotch-ubuntu/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/ikhode-technology/codenotch-ubuntu/main/install.sh | sh
 #
 # Downloads the .deb from the newest GitHub release, installs it with apt (which pulls in
 # WebKitGTK and the tray library), and starts the notch. Run it again to update.
 set -eu
 
-REPO=MyKhode/codenotch-ubuntu
+REPO=ikhode-technology/codenotch-ubuntu
 URL="https://github.com/$REPO/releases/latest/download/Codenotch_amd64.deb"
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }

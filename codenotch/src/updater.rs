@@ -16,7 +16,7 @@ const INSTALLER_NAME: &str = "Codenotch-Setup.exe";
 const AGENT: &str = "Codenotch-Windows";
 // The Linux build is released from its own repository, as a package rather than an installer
 #[cfg(not(windows))]
-const REPO: &str = "MyKhode/codenotch-ubuntu";
+const REPO: &str = "ikhode-technology/codenotch-ubuntu";
 #[cfg(not(windows))]
 const INSTALLER_NAME: &str = "Codenotch_amd64.deb";
 #[cfg(not(windows))]

@@ -12,7 +12,7 @@
     "shortDescription": "codenotch-ubuntu: usage notch for Claude, Codex, Cursor, Copilot and Antigravity",
     "publisher": "Meatika Dev Team",
     "longDescription": "codenotch-ubuntu, provided by Meatika Dev Team: a notch on the screen edge showing how much of each AI coding assistant's usage limit is used. Linux build of Codenotch by Vinz.",
-    "homepage": "https://github.com/MyKhode/codenotch-ubuntu"
+    "homepage": "https://github.com/ikhode-technology/codenotch-ubuntu"
   },
   "plugins": {
     "updater": {

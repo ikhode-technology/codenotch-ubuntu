@@ -21,7 +21,7 @@ Provided by **Meatika Dev Team**
 Open a terminal and run:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/MyKhode/codenotch-ubuntu/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ikhode-technology/codenotch-ubuntu/main/install.sh | sh
 ```
 
 That downloads the latest release, installs it with `apt` (asking for your password once) and
@@ -85,7 +85,7 @@ to see what it found: credentials, CLIs, sessions.
 
 ```sh
 # update: the install command again
-curl -fsSL https://raw.githubusercontent.com/MyKhode/codenotch-ubuntu/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ikhode-technology/codenotch-ubuntu/main/install.sh | sh
 
 # uninstall
 sudo apt remove codenotch
