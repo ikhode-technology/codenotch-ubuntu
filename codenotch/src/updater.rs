@@ -24,6 +24,8 @@ const AGENT: &str = "codenotch-ubuntu";
 const UNSET_PUBKEY: &str = "REPLACE_WITH_TAURI_PUBLIC_KEY";
 const CHECK_ERROR: &str = "Could not check for updates";
 const INSTALL_ERROR: &str = "Could not install the update";
+#[cfg(not(windows))]
+const INSTALL_CANCELLED: &str = "Update cancelled";
 
 #[derive(Clone, Serialize, Default)]
 pub struct UpdateState {
@@ -161,7 +163,9 @@ pub fn check_for_update(app: AppHandle) {
         };
         match latest_windows_release(&current) {
             Ok(Some(version)) => {
-                let can_install = configured(&app)
+                // Linux installs the release's own package (see `linux`); Windows needs the signed feed
+                let can_install = cfg!(not(windows))
+                    || configured(&app)
                     && signed_feed_offer(&app)
                         .is_some_and(|signed| signed_offer_matches(&version, &signed));
                 crate::applog(&format!(
@@ -270,6 +274,7 @@ pub fn install_update(app: AppHandle) {
         };
         version
     };
+    #[cfg(windows)]
     if !configured(&app) {
         return;
     }
@@ -283,6 +288,34 @@ pub fn install_update(app: AppHandle) {
             ..Default::default()
         },
     );
+    #[cfg(not(windows))]
+    {
+        std::thread::spawn(move || {
+            let result = Version::parse(&offered).map_err(|_| INSTALL_ERROR).and_then(|v| linux::install(&v));
+            match result {
+                Ok(()) => {
+                    crate::applog(&format!("updater: {offered} installed, restarting"));
+                    linux::relaunch();
+                    app.exit(0);
+                }
+                Err(message) => {
+                    crate::applog(&format!("updater: {offered} not installed ({message})"));
+                    set(
+                        &app,
+                        UpdateState {
+                            available: Some(offered),
+                            checked: true,
+                            can_install: true,
+                            message: Some(message.into()),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+        });
+        return;
+    }
+    #[cfg(windows)]
     std::thread::spawn(move || {
         let outcome = tauri::async_runtime::block_on(async {
             let Some(update) = app.updater()?.check().await? else {
@@ -326,6 +359,105 @@ pub fn install_update(app: AppHandle) {
     });
 }
 
+/// The SHA-256 a release's SHA256SUMS gives for one of its files
+#[cfg_attr(windows, allow(dead_code))]
+fn checksum_for<'a>(sums: &'a str, file: &str) -> Option<&'a str> {
+    sums.lines().find_map(|l| {
+        let (hash, name) = l.split_once(char::is_whitespace)?;
+        (name.trim_start_matches([' ', '*']) == file && hash.len() == 64).then_some(hash)
+    })
+}
+
+/// One click from "available" to running it: the release's package, checked against its
+/// SHA256SUMS, installed through the desktop's password prompt. An AppImage replaces itself and
+/// needs no password.
+#[cfg(not(windows))]
+mod linux {
+    use super::{checksum_for, Version, AGENT, INSTALLER_NAME, INSTALL_CANCELLED, INSTALL_ERROR, REPO};
+    use std::io::Read;
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::process::CommandExt;
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
+    const APPIMAGE_NAME: &str = "Codenotch_amd64.AppImage";
+    /// Larger than any release asset; a response past it is not one
+    const MAX_BYTES: u64 = 256 << 20;
+
+    fn get(url: &str) -> Result<Vec<u8>, &'static str> {
+        let response = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(600))
+            .build()
+            .get(url)
+            .set("User-Agent", AGENT)
+            .call()
+            .map_err(|e| {
+                crate::applog(&format!("updater: download failed {url}: {e}"));
+                INSTALL_ERROR
+            })?;
+        let mut body = Vec::new();
+        response.into_reader().take(MAX_BYTES).read_to_end(&mut body).map_err(|_| INSTALL_ERROR)?;
+        Ok(body)
+    }
+
+    pub fn install(version: &Version) -> Result<(), &'static str> {
+        let base = format!("https://github.com/{REPO}/releases/download/v{version}");
+        let appimage = std::env::var_os("APPIMAGE").map(PathBuf::from);
+        let asset = if appimage.is_some() { APPIMAGE_NAME } else { INSTALLER_NAME };
+        let sums = String::from_utf8(get(&format!("{base}/SHA256SUMS"))?).map_err(|_| INSTALL_ERROR)?;
+        let want = checksum_for(&sums, asset).ok_or(INSTALL_ERROR)?.to_ascii_lowercase();
+        let bytes = get(&format!("{base}/{asset}"))?;
+        let got: String = ring::digest::digest(&ring::digest::SHA256, &bytes)
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        if got != want {
+            crate::applog(&format!("updater: {asset} checksum mismatch"));
+            return Err(INSTALL_ERROR);
+        }
+        if let Some(path) = appimage {
+            // Written beside it and renamed over it: the running image stays intact until then
+            let next = path.with_extension("new");
+            std::fs::write(&next, &bytes).map_err(|_| INSTALL_ERROR)?;
+            let _ = std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755));
+            return std::fs::rename(&next, &path).map_err(|_| INSTALL_ERROR);
+        }
+        // apt reads local packages as its own _apt user, which cannot see into a private dir
+        let dir = std::env::temp_dir().join(format!("codenotch-update-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|_| INSTALL_ERROR)?;
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
+        let deb = dir.join(INSTALLER_NAME);
+        let written = std::fs::write(&deb, &bytes);
+        let _ = std::fs::set_permissions(&deb, std::fs::Permissions::from_mode(0o644));
+        let status = written.ok().and_then(|_| {
+            Command::new("pkexec").args(["apt-get", "install", "-y"]).arg(&deb).stdin(Stdio::null()).status().ok()
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        match status.and_then(|s| s.code()) {
+            Some(0) => Ok(()),
+            // pkexec: the password prompt was dismissed, or the user may not install packages
+            Some(126) | Some(127) => Err(INSTALL_CANCELLED),
+            _ => Err(INSTALL_ERROR),
+        }
+    }
+
+    /// Starts the new version once this one has gone: a second copy would otherwise find this
+    /// one still running and hand itself over to it.
+    pub fn relaunch() {
+        let exe = std::env::var_os("APPIMAGE").map(PathBuf::from).unwrap_or_else(|| "/usr/bin/codenotch".into());
+        let _ = Command::new("sh")
+            .args(["-c", "sleep 1; exec \"$0\""])
+            .arg(exe)
+            .process_group(0)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+}
+
 pub fn check_on_launch(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
@@ -336,6 +468,17 @@ pub fn check_on_launch(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn checksum_lines() {
+        let a = "a".repeat(64);
+        let b = "b".repeat(64);
+        let sums = format!("{a}  Codenotch_amd64.deb\n{b} *Codenotch_amd64.AppImage\n");
+        assert_eq!(super::checksum_for(&sums, "Codenotch_amd64.deb"), Some(a.as_str()));
+        assert_eq!(super::checksum_for(&sums, "Codenotch_amd64.AppImage"), Some(b.as_str()));
+        assert_eq!(super::checksum_for(&sums, "Codenotch_amd64"), None);
+        assert_eq!(super::checksum_for("short  Codenotch_amd64.deb", "Codenotch_amd64.deb"), None);
+    }
+
     use super::{newer_signed_release, newer_windows_release, signed_offer_matches};
     use semver::Version;
 
